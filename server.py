@@ -76,7 +76,7 @@ while True:
   # print("wait to recv...")
   request, client_addr = server_socket.recvfrom(packet_size)
   # ensure all the packet is successly received
-  if type(request) == str and request[0] == "e":
+  if type(request) == str and request[0] == "e": # bug
     if request == "exit " + str((ack + 1) % seq_limit):
       # print("the client want to exit")
       server_socket.sendto("exit", client_addr)
@@ -99,10 +99,6 @@ while True:
       LastByteRecv = (LastByteRecv + 1) % seq_limit
       rwnd = RcvBuffer - (LastByteRecv - LastByteRead + seq_limit) % seq_limit
       server_socket.sendto(pickle.dumps(s_pkt(client_pkt.base, rwnd)), client_addr)
-    # elif not client_pkt.base == (ack + 1) % seq_limit:
-    #   # print("miss order")
-    # else:
-    #   print("too fast")
 
 f.close()
 server_socket.close()
