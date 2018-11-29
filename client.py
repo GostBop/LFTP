@@ -1,172 +1,89 @@
-# -*- coding=utf-8 -*-
-from __future__ import print_function
-from socket import *
-import pickle, random, threading, time, os, sys, Queue
+# coding:utf-8
+import socket
+import os
+import pickle
+import threading
+import Queue
+import time
+import gc
+import binascii 
 
-# ----------------------------------------------
+class UDP(object):
+    def __init__(self, base, file):
+        self.base = base 
+        self.file = file
 
-class c_pkt(object):
-    # packet with sequence number and data
-    def __init__(self, seq, data):
-        self.seq = seq
-        self.data = data
-
-class s_pkt(object):
-    # packet with rwnd and ack
-    def __init__(self, rwnd, ack):
-        self.rwnd = rwnd
+class ACK(object):
+    def __init__(self, ack, rwnd):
         self.ack = ack
+        self.rwnd = rwnd
 
-# ----------------------------------------------
-
-serverName = '127.0.0.1'
-serverPort = 12000
-server_addr = (serverName, serverPort)
-
-DATA_SIZE = 1024
-BUF_SIZE = 65535
-time_limit = 0.001
-
-filePath = 'C:\Users\Sandman\Desktop\\test.jpg'
-fsize = os.path.getsize(filePath)
-num_of_times = fsize / DATA_SIZE
-print('num_of_times : %d' % num_of_times)
-
-windows = Queue.Queue()
-N = 3000
 base = 0
-next_seq_num = 0
-seq_limit = 10000
-
-timers = dict()
-seqs = dict()
-
+nextseq = 0
+windows = Queue.Queue()
 count = 0
-start = 0
-end = 0
+rwnd = 20
 
-LastByteSent = 0
-LastByteAcked = -1
-rwnd = 1
-my_rwnd = 1
-sent_but_not_acked = 0
+address = ('127.0.0.1', 31500)
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+file = open("C:\Users\Sandman\Desktop\\test.mp4".decode('UTF-8'), 'rb')
 
-# ----------------------------------------------
+buffer = file.read(1024)
+if not buffer:
+  s.sendto("exit", address)
+udp = UDP(nextseq, buffer)
+data = pickle.dumps(udp)
+s.sendto(data, address)
+windows.put(data)
+nextseq = nextseq + 1
 
-def progress(percent,width = 50):
-	show_str = ('[%%-%ds]' % width) % (int(width * percent / 100) * "#")
-	print('\r%s %d%%' % (show_str, percent), end = '')
+def chongchuan():
+  print "chongchuan"
+  lock = threading.Lock()
+  lock.acquire()
+  n = windows.qsize()
+  for _ in range(0, n):
+    data = windows.get()
+    s.sendto(data, address)
+    windows.put(data)
+  lock.release()
+  timer = threading.Timer(1.0, chongchuan)
+  timer.start()
 
-def calculate_rwnd(LastByteRcvd, LastByteRead, RcvBuffer, rwnd):
-    buffer = LastByteRcvd - LastByteRead
-    if buffer < 0 and -buffer > RcvBuffer:
-        buffer = RcvBuffer + buffer 
-    rwnd = RcvBuffer - buffer
-    return buffer
+def jieshou():
+  while True:
+    timer = threading.Timer(1.0, chongchuan)
+    timer.start()
+    global base
+    response, _ = s.recvfrom(6000)
+    if response == "exit":
+      print "b"
+      timer.cancel()
+      break
+    res = pickle.loads(response)
 
-def start_timer(seq, data):
-    timers[seq] = threading.Timer(time_limit, send_pkt, (seq, data))
-    timers[seq].start()
+    base = int(res.ack) + 1
+    rwnd = int(res.rwnd)
+    if base == 1000:
+      base = 0
+    timer.cancel()
 
-def send_pkt(seq, data):
-    clientSocket.sendto(pickle.dumps(c_pkt(seq, data)), server_addr)
-    LastByteSent = seq
-    start_timer(seq, data)
-
-def send_if_rwnd():
-    clientSocket.sendto('', server_addr)
-
-def rcv():
-    global f, count, num_of_times, start, rwnd, end, base, seqs, windows
-    global sent_but_not_acked, LastByteAcked, LastByteSent, seq_limit
-    while True:
-        if start == 0:
-            continue
-
-        while base in seqs:
-            if seqs[base] == 1:
-                LastByteAcked = base
-                windows.get()
-                base = (base + 1) % seq_limit
-            else:
-                break
-
-        response, server_addr = clientSocket.recvfrom(BUF_SIZE)
-        server_pkt = pickle.loads(response)
-        rwnd = server_pkt.rwnd
-        if rwnd == 0:
-            continue
-        
-        sent_but_not_acked = calculate_rwnd(LastByteSent, LastByteAcked, N, my_rwnd)
-
-        if sent_but_not_acked > rwnd:
-            continue
-
-        if server_pkt.ack == 'exit':
-            count = num_of_times
-            progress(100 * count / num_of_times)
-            print(' done!') # timerÊÇ·ñÈ«²¿cancel?
-            f.close()
-            clientSocket.close()
-            print('closed')
-            break
-        else:
-            seq = int(server_pkt.ack)
-            # [down_to_ack, up_to_ack)
-            up_to_ack = (seq + 1) % seq_limit
-            down_to_ack = (LastByteAcked + 1) % seq_limit
-            if up_to_ack > down_to_ack:
-                count = count + up_to_ack - down_to_ack
-                for i in range(down_to_ack, up_to_ack):
-                    timers[i].cancel()
-                    seqs[i] = 1
-            elif up_to_ack < down_to_ack:
-                count = count + up_to_ack + seq_limit + 1 - down_to_ack
-                for i in range(0, up_to_ack):
-                    timers[i].cancel()
-                    seqs[i] = 1
-                for i in range(down_to_ack, seq_limit + 1):
-                    timers[i].cancel()
-                    seqs[i] = 1
-            LastByteAcked = seq
-            progress(100 * count / num_of_times)
-
-          
-def transmit_windows():
-    global next_seq_num, base, start, sent_but_not_acked
-    while True: 
-        if rwnd == 0:
-            print('wait...')
-            # time.sleep(1)
-            send_if_rwnd()
-        elif sent_but_not_acked > rwnd:
-            print('wait.')
-            continue
-        elif my_rwnd > 0:
-            data = f.read(DATA_SIZE)
-            if data:
-                windows.put(data)
-                seqs[next_seq_num] = 0
-                send_pkt(next_seq_num, data)
-                start = 1
-                next_seq_num = (next_seq_num + 1) % seq_limit
-            else:
-                clientSocket.sendto('exit', server_addr)
-                break
-            
-                
-# ----------------------------------------------
-
-clientSocket = socket(AF_INET, SOCK_DGRAM)
-f = open(filePath, 'rb')
-
-clientSocket.sendto(str(num_of_times), server_addr)
-
-t = threading.Thread(target = rcv)
-# t.daemon = True
+t = threading.Thread(target=jieshou)
 t.start()
-
-transmit_windows()
-
+while True:
+  if (nextseq + 1000 - base) % 1000 < rwnd:
+    buffer = file.read(1024)
+    if not buffer:
+      s.sendto("exit" + str(nextseq), address)
+      print "a"
+      windows.put(data)
+      break
+    data = pickle.dumps(UDP(nextseq, buffer))
+    nextseq = nextseq + 1
+    if nextseq == 1000:
+      nextseq = 0
+    windows.put(data)
+    s.sendto(data, address)
 t.join()
-
+file.close()
+s.close()
