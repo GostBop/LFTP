@@ -4,11 +4,11 @@ import socket, os, pickle, Queue, threading, time
 # -----------------------------------------------
 ''' things to do...
 
-  1.let the client tell server its file size(to show the progress)
-  2.add print function to show the rate of progress
-  3.do sth when rwnd is 0
+  ¡Ì 1.let the client tell server its file size(to show the progress)
+  ¡Ì 2.add print function to show the rate of progress
+  ¡Ì 3.do sth when rwnd is 0
   4.determine the time to close the file and socket
-  5.why should the client send a packet at the beginning ?
+  ¡Ì 5.why should the client send a packet at the beginning ?
 
 '''
 
@@ -35,7 +35,7 @@ server_addr = ('', 31500)
 
 seq_limit = 1000
 packet_size = 60000
-RcvBuffer = 20
+RcvBuffer = 50
 
 num_of_times = -1
 
@@ -55,10 +55,16 @@ def write():
   global LastByteRead
   while True:
     time.sleep(1)
-    if not windows.empty():
+    while not windows.empty():
+      # print("write %d to file ~~~" % LastByteRead)
       f.write(windows.get())
       LastByteRead = (LastByteRead + 1) % seq_limit
-    elif done == 1:
+    if windows.empty() and done == 1:
+      print("empty and done")
+      time.sleep(5)
+      f.close()
+      server_socket.close()
+      print "closed"
       break
 
 # -----------------------------------------------
@@ -76,18 +82,22 @@ while True:
   # print("wait to recv...")
   request, client_addr = server_socket.recvfrom(packet_size)
   # ensure all the packet is successly received
-  if type(request) == str and request[0] == "e": # bug
+
+  rwnd = RcvBuffer - (LastByteRecv - LastByteRead + seq_limit) % seq_limit
+  if rwnd == 0 or request == "No Buffer":
+    # print("rwnd = %d    ack: %d" % (rwnd, ack))
+    server_socket.sendto(pickle.dumps(s_pkt(ack, rwnd)), client_addr)
+    continue
+
+  elif request[0] == 'e':
     if request == "exit " + str((ack + 1) % seq_limit):
       # print("the client want to exit")
       server_socket.sendto("exit", client_addr)
       done = 1
       break
-    continue
+    else:
+      continue
   
-  rwnd = RcvBuffer - (LastByteRecv - LastByteRead + seq_limit) % seq_limit
-  if rwnd == 0 or request == "":
-    # print "rwnd = 0"
-    server_socket.sendto(pickle.dumps(s_pkt(ack, rwnd)), client_addr)
   else:
     client_pkt = pickle.loads(request)
     # the seq is in order and there are still spaces left
@@ -99,7 +109,7 @@ while True:
       LastByteRecv = (LastByteRecv + 1) % seq_limit
       rwnd = RcvBuffer - (LastByteRecv - LastByteRead + seq_limit) % seq_limit
       server_socket.sendto(pickle.dumps(s_pkt(client_pkt.base, rwnd)), client_addr)
+    else:
+      # print("%d is too fast, I send ack: %d, rwnd: %d " % (client_pkt.base, ack, rwnd))
+      server_socket.sendto(pickle.dumps(s_pkt(ack, rwnd)), client_addr)
 
-f.close()
-server_socket.close()
-print "closed"
