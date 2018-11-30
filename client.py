@@ -40,7 +40,7 @@ num_of_times = file_size / data_size
 
 base = 0 # (LstByteAcked + 1) % seq_limit
 nextseq = 0 # (LastByteSent + 1) % seq_limit
-rwnd = 20
+rwnd = 50
 
 count = 0
 start = 0
@@ -70,11 +70,11 @@ def resend():
     packet = windows.get()
     client_socket.sendto(packet, server_addr)
     p = pickle.loads(packet)
-    print("resend %d" % int(p.base))
+    #print("resend %d" % int(p.base))
     
     windows.put(packet)
   lock.release()
-  print("time_count %d" % time_count)
+  #print("time_count %d" % time_count)
   time_count = time_count + 1
   timer = threading.Timer(time_limit + time_count, resend)
   timer.start()
@@ -96,16 +96,19 @@ def receive():
     if response == "exit":
       print(" server exit") 
       timer.cancel()
+      time.sleep(2)
       break
     else:
 
       server_pkt = pickle.loads(response)
-      print ("ack: %d" % int(server_pkt.ack))
+      rwnd = int(server_pkt.rwnd)
+      #print ("ack: %d, rwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd)))
+      timer.cancel()
       if int(server_pkt.ack) == base or int(server_pkt.ack) >= ((base + 1) % seq_limit):
         base = (int(server_pkt.ack) + 1) % seq_limit
-        print ("base: %d" % base)
-        rwnd = int(server_pkt.rwnd)
-        timer.cancel()
+        #print ("base: %d" % base)
+        
+
         time_count = 0
         lock.acquire()
         while not windows.empty():
@@ -113,11 +116,12 @@ def receive():
       
           packet = windows.get()
           p = pickle.loads(packet)
-          print ("pop: %d" % int(p.base))
+          #print ("pop: %d" % int(p.base))
           if ((p.base + 1) % seq_limit) >= base:
             break
         lock.release()
         progress(100 * count / num_of_times)
+      
 
 def send_a_packet():
   global f, data_size, nextseq, server_addr
@@ -136,6 +140,7 @@ def transmit():
     and send a small packet when rwnd is 0
   '''
   global start, nextseq, base, seq_limit, rwnd, f, data_size, windows, lock
+  rwnd_count = 0
   while True:
     # number of packets sent but not acked should smaller than rwnd
     if (nextseq - base + seq_limit) % seq_limit < rwnd:
@@ -154,9 +159,14 @@ def transmit():
         client_socket.sendto("exit " + str(nextseq), server_addr)
         windows.put(packet) # ?
         break
+    if rwnd != 0:
+      rwnd_count = 0
     # do sth when rwnd is 0
     elif rwnd == 0:
-      client_socket.sendto("", server_addr)
+      #print ("rwnd == 0")
+      if rwnd_count % 100 == 0:
+        client_socket.sendto("No Buffer", server_addr)
+      rwnd_count = (rwnd_count + 1) % 10
 
 # -----------------------------------------------
 
