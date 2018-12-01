@@ -75,7 +75,7 @@ def resend():
     which have been sent but not acked yet
   '''
   
-  global timer, lock, time_count, cwnd, ssthresh
+  global timer, lock, time_count, cwnd, ssthresh, end
   ssthresh = cwnd / 2
   cwnd = 1
   lock.acquire()
@@ -95,14 +95,15 @@ def resend():
   time_count = time_count + 1
   timer.cancel()
   timer = threading.Timer(time_limit + time_count, resend)
-  timer.start()
+  if end == 0:
+    timer.start()
 
 def receive():
   '''
     receive from server, and if there is no response,
     resend all the packet
   '''
-  global base, timer, rwnd, count, start, lock, time_count, cwnd, ssthresh
+  global base, timer, rwnd, count, start, lock, time_count, cwnd, ssthresh, end
   while True:
     if start == 0:
       continue
@@ -121,17 +122,16 @@ def receive():
 
       server_pkt = pickle.loads(response)
       rwnd = int(server_pkt.rwnd)
-      if (int(server_pkt.ack) + 1) % seq_limit != base:
+      
+      print ("ack: %d, rwnd: %d, cwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd), cwnd))
+      timer.cancel()
+      if int(server_pkt.ack) >= base or (base - int(server_pkt.ack) > 800) :
+        base = (int(server_pkt.ack) + 1) % seq_limit
+        #print ("base: %d" % base)
         if cwnd >= ssthresh:
           cwnd = cwnd + 1
         else:
           cwnd = cwnd * 2
-      print ("ack: %d, rwnd: %d, cwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd), cwnd))
-      timer.cancel()
-      if int(server_pkt.ack) == base or int(server_pkt.ack) >= ((base + 1) % seq_limit):
-        base = (int(server_pkt.ack) + 1) % seq_limit
-        #print ("base: %d" % base)
-        
 
         time_count = 0
         lock.acquire()
