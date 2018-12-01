@@ -104,7 +104,7 @@ def receive():
       rwnd = int(server_pkt.rwnd)
       #print ("ack: %d, rwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd)))
       timer.cancel()
-      if int(server_pkt.ack) == base or int(server_pkt.ack) >= ((base + 1) % seq_limit):
+      if int(server_pkt.ack) >= base or (base - int(server_pkt.ack) > 800):
         base = (int(server_pkt.ack) + 1) % seq_limit
         #print ("base: %d" % base)
         
