@@ -27,14 +27,16 @@ windows = Queue.Queue()
 
 server_addr = ('192.168.43.181', 31500)
 
-
+def f():
+  a = 1
 seq_limit = 1000
-time_limit = 1.5
+time_limit = 1
 time_count = 0
+timer = threading.Timer(time_limit, f)
 data_size = 10000
 packet_size = 60000
 
-filePath = "D:\pure.zip"
+filePath = "D:\wuyezhiqian.rmvb"
 file_size = os.path.getsize(filePath)
 num_of_times = file_size / data_size
 
@@ -76,12 +78,14 @@ def resend():
       packet = windows.get()
       client_socket.sendto(packet, server_addr)
       p = pickle.loads(packet)
-      print("resend %d" % int(p.base))
+      #print("resend %d" % int(p.base))
       
       windows.put(packet)
   lock.release()
-  #print("time_count %d" % time_count)
+  print("time_count %d" % time_count)
   time_count = time_count + 1
+  if timer.isAlive():
+    timer.cancel()
   timer = threading.Timer(time_limit + time_count, resend)
   timer.start()
 
@@ -114,7 +118,7 @@ def receive():
           cwnd = cwnd + 1
         else:
           cwnd = cwnd * 2
-      print ("ack: %d, rwnd: %d, cwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd), cwnd))
+      #print ("ack: %d, rwnd: %d, cwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd), cwnd))
       timer.cancel()
       if int(server_pkt.ack) == base or int(server_pkt.ack) >= ((base + 1) % seq_limit):
         base = (int(server_pkt.ack) + 1) % seq_limit
