@@ -19,6 +19,12 @@ class s_pkt(object):
       self.ack = ack
       self.rwnd = rwnd
 
+class file_info(object):
+  # the name and size of the file sent
+  def __init__(self, name, size):
+    self.name = name
+    self.size = size
+
 # -----------------------------------------------
 ''' globals
 '''
@@ -38,6 +44,7 @@ ip = sys.argv[1]
 fileName = sys.argv[2]
 filePath = "D:\\" + fileName
 file_size = os.path.getsize(filePath)
+file_sent = pickle.dumps(file_info(fileName, file_size))
 num_of_times = file_size / data_size
 
 base = 0 # (LstByteAcked + 1) % seq_limit
@@ -54,7 +61,7 @@ lock = threading.Lock()
 
 tcp = socket(AF_INET, SOCK_STREAM)
 tcp.connect((ip, 9999))
-tcp.send(fileName)
+tcp.send(file_sent)
 port = tcp.recv(1024)
 tcp.close()
 print("port: %d" % int(port))
@@ -75,7 +82,7 @@ def resend():
     which have been sent but not acked yet
   '''
   
-  global timer, lock, time_count, cwnd, ssthresh, end
+  global timer, lock, time_count, cwnd, ssthresh, end, rwnd
   ssthresh = cwnd / 2
   cwnd = 1
   lock.acquire()
@@ -91,7 +98,9 @@ def resend():
       
       windows.put(packet)
   lock.release()
-  print("time_count %d" % time_count)
+  if time_count >= 1:
+    print("time_count: %d, rwnd: %d, cwnd: %d" % (time_count, rwnd, cwnd))
+    print(end)
   time_count = time_count + 1
   timer.cancel()
   timer = threading.Timer(time_limit + time_count, resend)
@@ -123,9 +132,9 @@ def receive():
       server_pkt = pickle.loads(response)
       rwnd = int(server_pkt.rwnd)
       
-      print ("ack: %d, rwnd: %d, cwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd), cwnd))
+      #print ("ack: %d, rwnd: %d, cwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd), cwnd))
       timer.cancel()
-      if int(server_pkt.ack) >= base or (base - int(server_pkt.ack) > 800) :
+      if (int(server_pkt.ack) >= base and int(server_pkt.ack) - base < 50) or (base - int(server_pkt.ack) > 800) :
         base = (int(server_pkt.ack) + 1) % seq_limit
         #print ("base: %d" % base)
         if cwnd >= ssthresh:
@@ -140,7 +149,7 @@ def receive():
       
           packet = windows.get()
           p = pickle.loads(packet)
-          #print ("pop: %d" % int(p.base))
+          #print ("base: %d, pop: %d" % (base, int(p.base)))
           if ((p.base + 1) % seq_limit) >= base:
             break
         lock.release()
