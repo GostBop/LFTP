@@ -122,7 +122,7 @@ def receive():
       if time_count >= 5:
         print ("ack: %d, rwnd: %d, cwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd), cwnd))
       timer.cancel()
-      if int(server_pkt.ack) >= base or (base - int(server_pkt.ack) > 800) :
+      if (int(server_pkt.ack) >= base and int(server_pkt.ack) - base < 50) or (base - int(server_pkt.ack) > 800) :
         base = (int(server_pkt.ack) + 1) % seq_limit
         if time_count >= 5:
           print ("base: %d" % base)
