@@ -28,6 +28,12 @@ class s_pkt(object):
       self.ack = ack
       self.rwnd = rwnd
 
+class file_info(object):
+  # the name and size of the file sent
+  def __init__(self, name, size):
+    self.name = name
+    self.size = size
+
 # -----------------------------------------------
 ''' globals
 '''
@@ -138,9 +144,13 @@ if __name__ == '__main__':
     sock, addr = tcp.accept()
     port = port + 1000
     sock.send(str(port))
-    fileName = sock.recv(1024)
-    print fileName
+    data = sock.recv(1024)
+    file_recv = pickle.loads(data)
     sock.close()
-    filePath = 'D:\\test\\' + fileName
+    print("The uploaded port is: %d" % port)
+    print("The fileName is: %s" % file_recv.name)
+    print("The fileSize is: %s" % file_recv.size)
+    
+    filePath = 'D:\\test\\' + file_recv.name
     t = threading.Thread(target= server, args= (port, filePath))
     t.start()
