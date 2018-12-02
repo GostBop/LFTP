@@ -3,13 +3,11 @@ import socket, os, pickle, Queue, threading, time
 
 # -----------------------------------------------
 ''' things to do...
-
   ¡Ì 1.let the client tell server its file size(to show the progress)
   ¡Ì 2.add print function to show the rate of progress
   ¡Ì 3.do sth when rwnd is 0
   4.determine the time to close the file and socket
   ¡Ì 5.why should the client send a packet at the beginning ?
-
 '''
 
 # -----------------------------------------------
@@ -112,4 +110,3 @@ while True:
     else:
       # print("%d is too fast, I send ack: %d, rwnd: %d " % (client_pkt.base, ack, rwnd))
       server_socket.sendto(pickle.dumps(s_pkt(ack, rwnd)), client_addr)
-

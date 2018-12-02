@@ -27,10 +27,12 @@ windows = Queue.Queue()
 
 server_addr = ('192.168.43.181', 31500)
 
-
+def f():
+  a = 1
 seq_limit = 1000
-time_limit = 1.5
+time_limit = 1
 time_count = 0
+timer = threading.Timer(time_limit, f)
 data_size = 10000
 packet_size = 60000
 
@@ -66,7 +68,7 @@ def resend():
     which have been sent but not acked yet
   '''
   
-  global timer, lock, time_count, cwnd, ssthresh
+  global timer, lock, time_count, cwnd, ssthresh, end
   ssthresh = cwnd / 2
   cwnd = 1
   lock.acquire()
@@ -76,21 +78,29 @@ def resend():
       packet = windows.get()
       client_socket.sendto(packet, server_addr)
       p = pickle.loads(packet)
-      print("resend %d" % int(p.base))
+      if time_count >= 5:
+        print("resend %d" % int(p.base))
       
       windows.put(packet)
+    if win_size == 0:
+      print("no resend")
   lock.release()
-  #print("time_count %d" % time_count)
+  print("time_count %d" % time_count)
+  if time_count >= 5:
+    print(end)
   time_count = time_count + 1
+  if timer.isAlive():
+    timer.cancel()
   timer = threading.Timer(time_limit + time_count, resend)
-  timer.start()
+  if end == 0:
+    timer.start()
 
 def receive():
   '''
     receive from server, and if there is no response,
     resend all the packet
   '''
-  global base, timer, rwnd, count, start, lock, time_count, cwnd, ssthresh
+  global base, timer, rwnd, count, start, lock, time_count, cwnd, ssthresh, time_count, end
   while True:
     if start == 0:
       continue
@@ -109,17 +119,17 @@ def receive():
 
       server_pkt = pickle.loads(response)
       rwnd = int(server_pkt.rwnd)
-      if (int(server_pkt.ack) + 1) % seq_limit != base:
+      if time_count >= 5:
+        print ("ack: %d, rwnd: %d, cwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd), cwnd))
+      timer.cancel()
+      if int(server_pkt.ack) >= base or (base - int(server_pkt.ack) > 800) :
+        base = (int(server_pkt.ack) + 1) % seq_limit
+        if time_count >= 5:
+          print ("base: %d" % base)
         if cwnd >= ssthresh:
           cwnd = cwnd + 1
         else:
           cwnd = cwnd * 2
-      print ("ack: %d, rwnd: %d, cwnd: %d" % (int(server_pkt.ack), int(server_pkt.rwnd), cwnd))
-      timer.cancel()
-      if int(server_pkt.ack) == base or int(server_pkt.ack) >= ((base + 1) % seq_limit):
-        base = (int(server_pkt.ack) + 1) % seq_limit
-        #print ("base: %d" % base)
-        
 
         time_count = 0
         lock.acquire()
@@ -128,7 +138,8 @@ def receive():
       
           packet = windows.get()
           p = pickle.loads(packet)
-          #print ("pop: %d" % int(p.base))
+          if time_count >= 5:
+            print ("pop: %d" % int(p.base))
           if ((p.base + 1) % seq_limit) >= base:
             break
         lock.release()
