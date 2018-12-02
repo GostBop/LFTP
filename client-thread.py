@@ -42,7 +42,7 @@ packet_size = 60000
 
 ip = sys.argv[1]
 fileName = sys.argv[2]
-filePath = "D:\\" + fileName
+filePath = "C:\\Users\\Sandman\\Desktop\\" + fileName
 file_size = os.path.getsize(filePath)
 file_sent = pickle.dumps(file_info(fileName, file_size))
 num_of_times = file_size / data_size
@@ -54,11 +54,11 @@ cwnd = 1
 ssthresh = 0
 
 count = 0
+last_count = 0
 start = 0
 end = 0
 
 lock = threading.Lock()
-
 tcp = socket(AF_INET, SOCK_STREAM)
 tcp.connect((ip, 9999))
 tcp.send(file_sent)
@@ -66,15 +66,46 @@ port = tcp.recv(1024)
 tcp.close()
 print("port: %d" % int(port))
 server_addr = (ip, int(port))
+ 
 # -----------------------------------------------
 ''' functions
 '''
 
-def progress(percent , width = 50):
-	if percent >= 100:
+def print_progress():
+  global last_count
+  while True:
+    if start == 0:
+      continue
+    time.sleep(1)
+    count_dif = count - last_count
+    speed = 0
+    unit = 'Kbps'
+    if count_dif > 0:
+      if count_dif >= 100:
+        speed = count_dif / 1024.0
+        unit = 'Mbps'
+      else:
+        speed = count_dif / 10.0
+        unit = 'Kbps'
+
+    percent = 100 * count / num_of_times
+    progress(percent, 50, speed, unit)
+    last_count = count
+    if end == 1:
+      break
+  progress(percent, 50, -1)
+  end_time = time.asctime( time.localtime(time.time()) )
+  print("\nend time: ", end_time)
+
+
+def progress(percent, width = 50, speed = -1, unit = 'bps'):
+  if percent >= 100:
 		percent = 100
-	show_str = ('[%%-%ds]' % width) % (int(width * percent / 100) * "#")
-	print('\r%s %d%%' % (show_str, percent), end = '')
+  show_str = ('[%%-%ds]' % width) % (int(width * percent / 100) * "#")
+  if speed == -1:
+    print('\r%s %d%% done!    ' % (show_str, percent), end = '')
+  else:
+    print('\r%s %d%%  %.1f%s' % (show_str, percent, speed, unit), end = '')
 
 def resend():
   '''
@@ -98,7 +129,7 @@ def resend():
       
       windows.put(packet)
   lock.release()
-  if time_count >= 1:
+  if time_count >= 5:
     print("time_count: %d, rwnd: %d, cwnd: %d" % (time_count, rwnd, cwnd))
     print(end)
   time_count = time_count + 1
@@ -122,7 +153,7 @@ def receive():
     # if rwnd is 0, the transmit function will send(resend) packet
     response, _ = client_socket.recvfrom(packet_size)
     if response == "exit":
-      print(" server exit") 
+      # print(" server exit") 
       end = 1
       timer.cancel()
       time.sleep(2)
@@ -153,7 +184,7 @@ def receive():
           if ((p.base + 1) % seq_limit) >= base:
             break
         lock.release()
-        progress(100 * count / num_of_times)
+        # progress(100 * count / num_of_times)
       
 
 def send_a_packet():
@@ -181,14 +212,17 @@ def transmit():
       if data:
         packet = pickle.dumps(c_pkt(nextseq, data))
         client_socket.sendto(packet, server_addr)
-        start = 1
+        if start == 0:
+          start = 1
+          start_time = time.asctime( time.localtime(time.time()) )
+          print("start time: ", start_time)
         lock.acquire()
         windows.put(packet)
         lock.release()
         #print("put: %d" % nextseq)
         nextseq = (nextseq + 1) % seq_limit
       else:
-        print(" send exit", end = '') 
+        # print(" send exit", end = '') 
         client_socket.sendto("exit " + str(nextseq), server_addr)
         windows.put(packet) # ?
         break
@@ -211,6 +245,9 @@ timer = threading.Timer(time_limit, resend)
 # receive from server
 t = threading.Thread(target = receive)
 t.start()
+#print bar
+p = threading.Thread(target = print_progress)
+p.start()
 # send packets
 transmit()
 

@@ -1,4 +1,5 @@
 # coding:utf-8
+from __future__ import print_function
 import socket, os, pickle, Queue, threading, time
 
 # -----------------------------------------------
@@ -57,8 +58,7 @@ done = 0'''
 ''' functions
 '''
 
-def write(LastByteRead, windows, done, f, server_socket):
-  global port
+def write(p, LastByteRead, windows, done, f, server_socket):
   while True:
     #time.sleep(1)
     while not windows.empty():
@@ -67,11 +67,14 @@ def write(LastByteRead, windows, done, f, server_socket):
       LastByteRead[0] = (LastByteRead[0] + 1) % seq_limit
       #print ("write: %d" % LastByteRead[0])
     if windows.empty() and done[0] == 1:
-      print("empty and done")
+      print("[%d] empty and done" % p)
       time.sleep(5)
       f.close()
       server_socket.close()
-      print "closed"
+      print("[%d] closed" % p)
+      end_time = time.asctime( time.localtime(time.time()) )
+      print("[%d] " % p, end = '')
+      print("end time: ", end_time)
       break
 
 # -----------------------------------------------
@@ -87,11 +90,12 @@ def server(p, filePath):
 
   server_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
   server_socket.bind(server_addr)
-  print "the server is ready to receive"
+  print("[%d] the server is ready to receive" % p)
+  
 
   f = open(filePath.decode('utf-8'), 'wb')
 
-  t = threading.Thread(target = write, args=(LastByteRead, windows, done, f, server_socket))
+  t = threading.Thread(target = write, args=(p, LastByteRead, windows, done, f, server_socket))
   t.start()
 
   while True:
@@ -147,10 +151,13 @@ if __name__ == '__main__':
     data = sock.recv(1024)
     file_recv = pickle.loads(data)
     sock.close()
-    print("The uploaded port is: %d" % port)
-    print("The fileName is: %s" % file_recv.name)
-    print("The fileSize is: %s" % file_recv.size)
-    
-    filePath = 'D:\\test\\' + file_recv.name
-    t = threading.Thread(target= server, args= (port, filePath))
+    start_time = time.asctime( time.localtime(time.time()) )
+    print("[%d] The uploaded port is: %d" % (port, port))
+    print("[%d] The fileName is: %s" % (port, file_recv.name))
+    file_size_Mb = file_recv.size / 1024.0 / 1024
+    print("[%d] The fileSize is: %.1fMb" % (port, file_size_Mb))
+    print("[%d] " % port, end = '')
+    print("start time: ", start_time)
+    filePath = 'C:\\Users\\Sandman\\Desktop\\test\\' + file_recv.name
+    t = threading.Thread(target = server, args = (port, filePath))
     t.start()
